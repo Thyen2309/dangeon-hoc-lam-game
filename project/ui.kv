@@ -1,0 +1,76 @@
+# ui.kv
+#
+# This file describes the Kivy user interface.
+# The root widget is GameRoot, which is defined in main.py.
+
+<GameRoot>:
+    orientation: "vertical"
+
+    # Top area: camera feed with monster image on top.
+    RelativeLayout:
+        id: camera_layout
+        size_hint_y: 0.6
+
+        # Live camera view from OpenCV.
+        Image:
+            id: camera_view
+            allow_stretch: True
+            keep_ratio: True
+
+        # Monster image displayed on top of the camera.
+        Image:
+            id: monster_image
+            source: "monster.png"   # Put a monster.png in the same folder.
+            size_hint: None, None
+            size: 200, 200
+            opacity: 0.0            # Hidden until a monster appears.
+
+    # Middle area: HP information and status messages.
+    BoxLayout:
+        orientation: "vertical"
+        size_hint_y: 0.25
+
+        BoxLayout:
+            orientation: "horizontal"
+            size_hint_y: 0.5
+
+            Label:
+                id: player_hp_label
+                text: "Player HP: 0"
+                font_size: "18sp"
+
+            Label:
+                id: monster_hp_label
+                text: "Monster HP: -"
+                font_size: "18sp"
+
+        Label:
+            id: status_label
+            text: "Welcome to AR Dungeon Hunt!"
+            font_size: "16sp"
+            halign: "center"
+            valign: "middle"
+            text_size: self.size
+
+    # Bottom area: action buttons.
+    BoxLayout:
+        orientation: "horizontal"
+        size_hint_y: 0.15
+        padding: 5
+        spacing: 5
+
+        Button:
+            text: "Attack"
+            font_size: "18sp"
+            on_press: root.on_attack()
+
+        Button:
+            text: "Defend"
+            font_size: "18sp"
+            on_press: root.on_defend()
+
+        Button:
+            text: "Run"
+            font_size: "18sp"
+            on_press: root.on_run()
+
