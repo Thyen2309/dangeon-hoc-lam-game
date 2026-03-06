@@ -8,16 +8,19 @@ the player defeats a monster.
 import random
 
 
-def generate_loot() -> str:
+def generate_loot() -> tuple[str, int]:
     """
-    Return the name of a random loot item.
-    For a simple prototype we just pick a random string.
+    Return a random loot item and quantity.
+
+    Items have different drop weights:
+    - Gold is common and drops in stacks
+    - Equipment is rarer and drops as a single item
     """
-    loot_options = [
-        "Sword",
-        "Armor",
-        "Potion",
-        "Gold",
-    ]
-    return random.choice(loot_options)
+    items = ["Gold", "Potion", "Armor", "Sword"]
+    weights = [55, 25, 12, 8]
+    item = random.choices(items, weights=weights, k=1)[0]
+
+    if item == "Gold":
+        return ("Gold", random.randint(5, 25))
+    return (item, 1)
 

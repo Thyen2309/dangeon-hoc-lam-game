@@ -18,12 +18,83 @@
             keep_ratio: True
 
         # Monster image displayed on top of the camera.
+        # Shadow layer (drawn behind) to give depth.
+        Image:
+            id: monster_shadow
+            source: "monster.png"
+            size_hint: None, None
+            size: 200, 200
+            opacity: 0.0
+            color: 0, 0, 0, 0.35
+
         Image:
             id: monster_image
             source: "monster.png"   # Put a monster.png in the same folder.
             size_hint: None, None
             size: 200, 200
             opacity: 0.0            # Hidden until a monster appears.
+
+        # Loot drop (tap to pick up).
+        Button:
+            id: loot_button
+            text: "NHẶT"
+            size_hint: None, None
+            size: 110, 44
+            opacity: 0.0
+            disabled: True
+            background_normal: ""
+            background_down: ""
+            background_color: 0.95, 0.75, 0.10, 0.95
+            color: 0, 0, 0, 1
+            on_press: root.on_pickup_loot()
+
+        # Full-screen red flash overlay when monster attacks.
+        Widget:
+            size_hint: 1, 1
+            pos_hint: {"x": 0, "y": 0}
+            canvas.before:
+                Color:
+                    rgba: 1, 0, 0, root.attack_flash_alpha
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+        # Inventory / chest mini panel (bottom-left).
+        AnchorLayout:
+            anchor_x: "left"
+            anchor_y: "bottom"
+            padding: 8
+            BoxLayout:
+                size_hint: None, None
+                size: 360, 64
+                orientation: "horizontal"
+                spacing: 6
+                canvas.before:
+                    Color:
+                        rgba: 0, 0, 0, 0.45
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [10]
+
+                Button:
+                    text: "Rương"
+                    size_hint_x: None
+                    width: 90
+                    font_size: "14sp"
+                    background_normal: ""
+                    background_down: ""
+                    background_color: 0.3, 0.8, 1, 1
+                    color: 0, 0, 0, 1
+                    on_press: root.open_inventory()
+
+                Label:
+                    id: inventory_label
+                    text: "Rương: (trống)"
+                    font_size: "13sp"
+                    halign: "left"
+                    valign: "middle"
+                    text_size: self.size
 
     # Middle area: HP information and status messages.
     BoxLayout:
