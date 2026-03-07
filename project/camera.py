@@ -8,7 +8,10 @@ The GameRoot widget in main.py uses this class to grab frames
 and display them inside a Kivy Image widget.
 """
 
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
 
 
 class Camera:
@@ -28,7 +31,7 @@ class Camera:
         :param index: camera index (0 is usually the default camera)
         """
         self.index = index
-        self.capture = cv2.VideoCapture(self.index)
+        self.capture = cv2.VideoCapture(self.index) if cv2 is not None else None
 
     def get_frame(self):
         """
@@ -36,6 +39,9 @@ class Camera:
 
         :return: an image (NumPy array) or None if the frame could not be read
         """
+        if cv2 is None:
+            return None
+
         if not self.capture or not self.capture.isOpened():
             return None
 

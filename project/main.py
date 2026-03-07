@@ -1,4 +1,12 @@
-import cv2
+import os
+from pathlib import Path
+
+os.environ.setdefault("KIVY_NO_FILELOG", "1")
+
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
 
 from dataclasses import dataclass
 import random
@@ -20,6 +28,8 @@ from player import Player
 from monster import create_random_monster
 from combat import player_attack, monster_attack
 from loot import generate_loot
+
+BASE_DIR = Path(__file__).resolve().parent
 
 
 @dataclass(frozen=True)
@@ -43,6 +53,13 @@ class GameRoot(BoxLayout):
 
     # Alpha của lớp flash đỏ khi quái tấn công (0..1).
     attack_flash_alpha = NumericProperty(0.0)
+    scanline_alpha = NumericProperty(0.0)
+    scanline_y = NumericProperty(0.22)
+    aura_alpha = NumericProperty(0.0)
+    aura_scale = NumericProperty(0.92)
+    ground_glow_alpha = NumericProperty(0.0)
+    ground_glow_scale = NumericProperty(0.9)
+    atmosphere_alpha = NumericProperty(0.18)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -67,12 +84,14 @@ class GameRoot(BoxLayout):
         self._loot_anim = None
         self._monster_idle_anim = None
         self._monster_attack_event = None
+        self._scan_anim = None
         self._inventory_popup: Popup | None = None
         self._inventory_slot_buttons: list[Button] = []
         self._inventory_info_label: Label | None = None
         self._inventory_selected_name: str | None = None
         self._inventory_use_button: Button | None = None
         self._inventory_drop_button: Button | None = None
+        self._camera_unavailable_notified = False
 
         # Start updating the camera about 30 times per second.
         Clock.schedule_interval(self.update_camera, 1.0 / 30.0)
@@ -87,6 +106,7 @@ class GameRoot(BoxLayout):
         # Bind shadow position after kv ids are ready.
         Clock.schedule_once(lambda dt: self._setup_monster_shadow_binding(), 0)
         Clock.schedule_once(lambda dt: self.update_inventory_ui(), 0)
+        Clock.schedule_once(lambda dt: self._start_scan_effect(), 0.1)
 
     def _setup_monster_shadow_binding(self):
         monster_image = self.ids.get("monster_image")
@@ -105,14 +125,37 @@ class GameRoot(BoxLayout):
 
         monster_image.bind(pos=lambda *_: sync_shadow(), size=lambda *_: sync_shadow())
 
+    def _start_scan_effect(self):
+        Animation.cancel_all(self, "scanline_alpha", "scanline_y")
+        self.scanline_alpha = 0.0
+        self.scanline_y = 0.18
+        anim = (
+            Animation(scanline_alpha=0.65, scanline_y=0.78, duration=1.1, t="out_cubic")
+            + Animation(scanline_alpha=0.0, duration=0.45, t="in_quad")
+            + Animation(scanline_y=0.18, duration=0.25)
+        )
+        anim.repeat = True
+        anim.start(self)
+        self._scan_anim = anim
+
     # ---------------- CAMERA HANDLING ----------------
     def update_camera(self, dt):
         """
         Grab a frame from the camera and show it in the Image widget.
         """
+        if cv2 is None:
+            if not self._camera_unavailable_notified:
+                self._camera_unavailable_notified = True
+                self.show_message("Khong tim thay OpenCV (cv2). Game van chay, camera bi tat.")
+                self.ids.camera_view.opacity = 0.25
+            return
+
         frame = self.camera.get_frame()
         if frame is None:
+            self.ids.camera_view.opacity = 0.25
             return
+
+        self.ids.camera_view.opacity = 1.0
 
         # Convert from BGR (OpenCV) to RGB (Kivy).
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -143,6 +186,8 @@ class GameRoot(BoxLayout):
         if self.monster is None:
             self.ids.monster_hp_label.text = "Monster HP: -"
             self.ids.monster_image.opacity = 0.0
+            self.aura_alpha = 0.0
+            self.ground_glow_alpha = 0.0
             if "monster_shadow" in self.ids:
                 self.ids.monster_shadow.opacity = 0.0
         else:
@@ -388,12 +433,12 @@ class GameRoot(BoxLayout):
         # Choose a random position for the monster image.
         # Chỉ cho quái xuất hiện ở dải thấp (gần \"mặt đất\" của khung camera).
         positions = [
-            {"x": 0.12, "y": 0.08},
-            {"x": 0.35, "y": 0.10},
-            {"x": 0.60, "y": 0.09},
-            {"x": 0.18, "y": 0.16},
-            {"x": 0.45, "y": 0.18},
-            {"x": 0.72, "y": 0.15},
+            {"x": 0.08, "y": 0.10},
+            {"x": 0.28, "y": 0.12},
+            {"x": 0.56, "y": 0.11},
+            {"x": 0.14, "y": 0.21},
+            {"x": 0.40, "y": 0.24},
+            {"x": 0.68, "y": 0.20},
         ]
         self.ids.monster_image.pos_hint = positions[self.monster.random_position_index]
         if "monster_shadow" in self.ids:
@@ -404,6 +449,7 @@ class GameRoot(BoxLayout):
         self.apply_monster_depth(positions[self.monster.random_position_index])
 
         self.show_message(f"A wild {self.monster.name} appears!")
+        self._play_spawn_effect()
         self.start_monster_idle_animation()
         self.start_monster_attack_loop()
 
@@ -513,13 +559,13 @@ class GameRoot(BoxLayout):
         # so it works even if you change the positions later).
         closeness = max(0.0, min(1.0, (y - 0.05) / 0.75))
 
-        size_far = 130
-        size_near = 260
+        size_far = 120
+        size_near = 300
         size_px = int(size_far + (size_near - size_far) * closeness)
 
-        monster_opacity = 0.55 + 0.45 * closeness
-        shadow_opacity = 0.10 + 0.35 * closeness
-        shadow_offset = (int(6 + 8 * closeness), int(-6 - 6 * closeness))
+        monster_opacity = 0.50 + 0.50 * closeness
+        shadow_opacity = 0.12 + 0.42 * closeness
+        shadow_offset = (int(12 + 14 * closeness), int(-18 - 10 * closeness))
 
         style = DepthStyle(
             size_px=size_px,
@@ -531,16 +577,47 @@ class GameRoot(BoxLayout):
 
         self.ids.monster_image.size = (style.size_px, style.size_px)
         self.ids.monster_image.opacity = style.monster_opacity if self.monster else 0.0
+        self.aura_alpha = 0.18 + 0.25 * closeness if self.monster else 0.0
+        self.aura_scale = 0.84 + 0.30 * closeness
+        self.ground_glow_alpha = 0.22 + 0.38 * closeness if self.monster else 0.0
+        self.ground_glow_scale = 0.90 + 0.22 * closeness
 
         shadow = self.ids.get("monster_shadow")
         if shadow is not None:
-            shadow.size = (style.size_px, style.size_px)
+            shadow.size = (int(style.size_px * 1.08), int(style.size_px * 0.46))
             shadow.opacity = style.shadow_opacity if self.monster else 0.0
             # position is synced via binding; force one sync now
             shadow.pos = (
                 self.ids.monster_image.x + style.shadow_offset_px[0],
                 self.ids.monster_image.y + style.shadow_offset_px[1],
             )
+
+    def _play_spawn_effect(self):
+        Animation.cancel_all(self, "aura_alpha", "aura_scale", "ground_glow_alpha", "ground_glow_scale")
+        base_aura_alpha = self.aura_alpha
+        base_aura_scale = self.aura_scale
+        base_glow_alpha = self.ground_glow_alpha
+        base_glow_scale = self.ground_glow_scale
+
+        spawn_fx = (
+            Animation(
+                aura_alpha=min(0.75, base_aura_alpha + 0.25),
+                aura_scale=base_aura_scale + 0.16,
+                ground_glow_alpha=min(0.9, base_glow_alpha + 0.28),
+                ground_glow_scale=base_glow_scale + 0.14,
+                duration=0.18,
+                t="out_quad",
+            )
+            + Animation(
+                aura_alpha=base_aura_alpha,
+                aura_scale=base_aura_scale,
+                ground_glow_alpha=base_glow_alpha,
+                ground_glow_scale=base_glow_scale,
+                duration=0.45,
+                t="out_cubic",
+            )
+        )
+        spawn_fx.start(self)
 
     def stop_monster_idle_animation(self):
         img = self.ids.get("monster_image")
@@ -569,22 +646,36 @@ class GameRoot(BoxLayout):
         base_x, base_y = img.pos
         base_w, base_h = img.size
 
-        # Hai keyframe: xu?ng nh? r?i l?n l?i (loop).
+        # Small drift + breathing to fake 3D hovering.
         down = Animation(
-            x=base_x - 2,
-            y=base_y - 6,
-            size=(base_w * 1.03, base_h * 1.03),
-            duration=0.7,
+            x=base_x - 6,
+            y=base_y - 8,
+            size=(base_w * 1.05, base_h * 1.05),
+            duration=0.8,
+            t="in_out_sine",
         )
-        up = Animation(x=base_x, y=base_y, size=(base_w, base_h), duration=0.7)
-        anim = down + up
+        side = Animation(
+            x=base_x + 8,
+            y=base_y + 6,
+            size=(base_w * 0.98, base_h * 0.98),
+            duration=0.9,
+            t="in_out_sine",
+        )
+        up = Animation(
+            x=base_x,
+            y=base_y,
+            size=(base_w, base_h),
+            duration=0.75,
+            t="in_out_sine",
+        )
+        anim = down + side + up
 
         def sync_shadow(*_args):
             if shadow is not None and self._monster_depth_style is not None:
                 sx = img.x + self._monster_depth_style.shadow_offset_px[0]
-                sy = img.y + self._monster_depth_style.shadow_offset_px[1] - 2
+                sy = img.y + self._monster_depth_style.shadow_offset_px[1] - 3
                 shadow.pos = (sx, sy)
-                shadow.size = img.size
+                shadow.size = (img.width * 1.1, img.height * 0.46)
 
         anim.bind(on_progress=lambda *_: sync_shadow())
         anim.repeat = True
@@ -624,7 +715,7 @@ class GameRoot(BoxLayout):
         if self.monster is None:
             return
         self._monster_attack_event = Clock.schedule_interval(
-            self._auto_monster_attack, 1.5
+            self._auto_monster_attack, 1.7
         )
 
     def stop_monster_attack_loop(self):
@@ -717,9 +808,9 @@ class GameRoot(BoxLayout):
         def sync_shadow(*_args):
             if shadow is not None and self._monster_depth_style is not None:
                 sx = img.x + self._monster_depth_style.shadow_offset_px[0] + 4
-                sy = img.y + self._monster_depth_style.shadow_offset_px[1] - 2
+                sy = img.y + self._monster_depth_style.shadow_offset_px[1] - 5
                 shadow.pos = (sx, sy)
-                shadow.size = (img.width * 0.96, img.height * 0.96)
+                shadow.size = (img.width * 1.08, img.height * 0.42)
 
         def restore_idle(*_args):
             if self.monster is not None:
@@ -743,6 +834,12 @@ class GameRoot(BoxLayout):
             + Animation(attack_flash_alpha=0.0, duration=0.22)
         )
         flash_screen.start(self)
+        Animation(atmosphere_alpha=0.42, duration=0.06).start(self)
+        (
+            Animation(ground_glow_alpha=min(1.0, self.ground_glow_alpha + 0.18), duration=0.08)
+            + Animation(ground_glow_alpha=max(0.18, self.ground_glow_alpha), duration=0.20)
+        ).start(self)
+        Animation(atmosphere_alpha=0.22, duration=0.20).start(self)
 
     def _play_player_attack_animation(self):
         """Player attack feedback: monster flashes red briefly when hit."""
@@ -778,9 +875,9 @@ class GameRoot(BoxLayout):
             if shadow is not None and self._monster_depth_style is not None:
                 shadow.pos = (
                     img.x + self._monster_depth_style.shadow_offset_px[0],
-                    img.y + self._monster_depth_style.shadow_offset_px[1] - 2,
+                    img.y + self._monster_depth_style.shadow_offset_px[1] - 4,
                 )
-                shadow.size = img.size
+                shadow.size = (img.width * 1.08, img.height * 0.44)
 
         def restore_idle(*_args):
             if self.monster is not None:
@@ -789,6 +886,10 @@ class GameRoot(BoxLayout):
         anim.bind(on_progress=lambda *_: sync_shadow())
         anim.bind(on_complete=restore_idle)
         anim.start(img)
+        (
+            Animation(aura_alpha=min(0.9, self.aura_alpha + 0.25), duration=0.05)
+            + Animation(aura_alpha=max(0.16, self.aura_alpha), duration=0.18)
+        ).start(self)
 
     def on_attack(self):
         """
@@ -858,7 +959,7 @@ class DungeonARApp(App):
 
     def build(self):
         # Load the UI layout from the .kv file.
-        Builder.load_file("ui.kv")
+        Builder.load_file(str(BASE_DIR / "ui.kv"))
         return GameRoot()
 
     def on_stop(self):

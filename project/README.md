@@ -1,46 +1,94 @@
-# AR-Style Dungeon Hunt Prototype (Python + Kivy + OpenCV)
+# Game San Quai AR (Python + Kivy + OpenCV)
 
-This is a simple beginner-friendly prototype of an **AR-style dungeon hunting game**
-using **Python**, **Kivy** for the UI, and **OpenCV** for the camera.
+Day la mot prototype game san quai kieu AR viet bang **Python**.
+Game dung:
 
-The camera feed is shown as the background, a monster image appears on top,
-and the player can attack, defend, or run using on-screen buttons.
+- `Kivy` de ve giao dien
+- `OpenCV` de lay hinh tu camera
 
-## Project Structure
+Nen game la camera, quai vat se xuat hien ben tren, va nguoi choi co the `Attack`, `Defend`, hoac `Run`.
 
-- `main.py` – Starts the Kivy app and connects all modules.
-- `camera.py` – Handles the OpenCV camera.
-- `player.py` – Defines the `Player` class and stats.
-- `monster.py` – Defines the `Monster` class and random monster creation.
-- `combat.py` – Simple combat functions for player and monster attacks.
-- `loot.py` – Generates random loot after defeating a monster.
-- `ui.kv` – Kivy UI layout (camera view, monster overlay, HP labels, buttons).
-- `requirements.txt` – Python dependencies.
+## Cau truc project
 
-## Setup
+- `main.py`: file chay chinh cua game
+- `camera.py`: xu ly camera bang OpenCV
+- `player.py`: thong tin nguoi choi
+- `monster.py`: tao quai vat ngau nhien
+- `combat.py`: logic tan cong / phong thu
+- `loot.py`: logic roi do sau khi ha quai
+- `ui.kv`: giao dien Kivy
+- `requirements.txt`: danh sach thu vien can cai
 
-1. Create and activate a virtual environment (optional but recommended).
-2. Install dependencies:
+## Cai dat
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+Luu y: tren may nay nen dung `Python 3.11`. Khong nen dung `Python 3.14` vi dang thieu / khong khop thu vien.
 
-3. Place a `monster.png` image in the same folder as `main.py`.
-   - Any simple PNG works (for example, 200x200 pixels with a transparent background).
+### 1. Cai package truoc khi chay
 
-4. Run the game:
+Neu dang dung PowerShell trong thu muc `project`, chay:
 
-   ```bash
-   python main.py
-   ```
+```powershell
+py -m pip install -r requirements.txt
+```
 
-## Basic Controls
+Neu muon chi ro dung `Python 3.11`, chay:
 
-- **Attack** – Deal damage to the monster. The monster then attacks back.
-- **Defend** – Reduce the damage taken from the monster's next attack.
-- **Run** – Run away and spawn a new monster.
+```powershell
+& C:\Users\Admin\AppData\Local\Programs\Python\Python311\python.exe -m pip install -r requirements.txt
+```
 
-When a monster is defeated, you automatically receive random loot
-(`Sword`, `Armor`, `Potion`, or `Gold`), and a new monster will appear.
+Hai package can co la:
 
+```text
+kivy
+opencv-python
+```
+
+### 2. Chay game
+
+Sau khi cai xong, chay mot trong cac cach sau:
+
+```powershell
+py main.py
+```
+
+Hoac:
+
+```powershell
+.\run_game.cmd
+```
+
+Neu dang o thu muc goc `E:\dangeon-hoc-lam-game` thi chay:
+
+```powershell
+.\run_game.cmd
+```
+
+## Neu gap loi
+
+### Loi `No module named 'kivy'`
+
+Ban chua cai package, hoac dang chay sai Python.
+Hay cai lai bang:
+
+```powershell
+& C:\Users\Admin\AppData\Local\Programs\Python\Python311\python.exe -m pip install -r requirements.txt
+```
+
+Sau do chay lai:
+
+```powershell
+& C:\Users\Admin\AppData\Local\Programs\Python\Python311\python.exe .\main.py
+```
+
+### Loi camera
+
+Neu may khong co camera hoac OpenCV khong mo duoc camera, game van co the mo len nhung nen camera se khong hien.
+
+## Dieu khien co ban
+
+- `Attack`: tan cong quai, quai se danh lai neu chua chet
+- `Defend`: giam sat thuong o dot danh tiep theo cua quai
+- `Run`: bo chay va tim quai moi
+
+Khi ha quai, ban co the nhan do roi nhu `Sword`, `Armor`, `Potion`, hoac `Gold`.

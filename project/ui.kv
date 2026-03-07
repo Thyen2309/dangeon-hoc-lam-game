@@ -10,6 +10,12 @@
     RelativeLayout:
         id: camera_layout
         size_hint_y: 0.6
+        canvas.before:
+            Color:
+                rgba: 0.03, 0.05, 0.08, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
 
         # Live camera view from OpenCV.
         Image:
@@ -17,15 +23,74 @@
             allow_stretch: True
             keep_ratio: True
 
+        Widget:
+            size_hint: 1, 1
+            pos_hint: {"x": 0, "y": 0}
+            canvas:
+                Color:
+                    rgba: 0.04, 0.12, 0.16, root.atmosphere_alpha
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+                Color:
+                    rgba: 0.55, 0.9, 0.85, root.scanline_alpha * 0.45
+                Rectangle:
+                    pos: self.x, self.y + self.height * root.scanline_y
+                    size: self.width, self.height * 0.035
+                Color:
+                    rgba: 0.9, 0.95, 1, 0.08
+                Rectangle:
+                    pos: self.x, self.y + self.height * 0.62
+                    size: self.width, self.height * 0.015
+
+        Widget:
+            id: ground_glow
+            size_hint: None, None
+            size: camera_layout.width * 0.32 * root.ground_glow_scale, camera_layout.height * 0.11 * root.ground_glow_scale
+            pos_hint: {"center_x": monster_image.pos_hint.get("x", 0.5) + 0.18, "y": monster_image.pos_hint.get("y", 0.0) - 0.03}
+            opacity: 1
+            canvas:
+                Color:
+                    rgba: 0.1, 0.95, 0.72, root.ground_glow_alpha
+                Ellipse:
+                    pos: self.pos
+                    size: self.size
+                Color:
+                    rgba: 0.95, 1, 1, root.ground_glow_alpha * 0.32
+                Ellipse:
+                    pos: self.x + self.width * 0.18, self.y + self.height * 0.18
+                    size: self.width * 0.64, self.height * 0.64
+
+        Widget:
+            id: monster_aura
+            size_hint: None, None
+            size: monster_image.width * 1.25 * root.aura_scale, monster_image.height * 1.25 * root.aura_scale
+            pos: monster_image.center_x - self.width / 2, monster_image.center_y - self.height / 2
+            canvas:
+                Color:
+                    rgba: 0.2, 1, 0.78, root.aura_alpha * 0.65
+                Ellipse:
+                    pos: self.pos
+                    size: self.size
+                Color:
+                    rgba: 1, 1, 1, root.aura_alpha * 0.20
+                Ellipse:
+                    pos: self.x + self.width * 0.14, self.y + self.height * 0.14
+                    size: self.width * 0.72, self.height * 0.72
+
         # Monster image displayed on top of the camera.
         # Shadow layer (drawn behind) to give depth.
         Image:
             id: monster_shadow
-            source: "monster.png"
             size_hint: None, None
-            size: 200, 200
+            size: 220, 90
             opacity: 0.0
-            color: 0, 0, 0, 0.35
+            canvas:
+                Color:
+                    rgba: 0, 0, 0, 0.22
+                Ellipse:
+                    pos: self.pos
+                    size: self.size
 
         Image:
             id: monster_image
@@ -58,6 +123,12 @@
                 Rectangle:
                     pos: self.pos
                     size: self.size
+            canvas:
+                Color:
+                    rgba: 0.1, 0.85, 0.75, 0.06
+                Line:
+                    points: self.x, self.y + self.height * 0.2, self.right, self.y + self.height * 0.2
+                    width: 1.2
 
         # Inventory / chest mini panel (bottom-left).
         AnchorLayout:
@@ -71,7 +142,7 @@
                 spacing: 6
                 canvas.before:
                     Color:
-                        rgba: 0, 0, 0, 0.45
+                        rgba: 0.02, 0.04, 0.06, 0.64
                     RoundedRectangle:
                         pos: self.pos
                         size: self.size
@@ -84,7 +155,7 @@
                     font_size: "14sp"
                     background_normal: ""
                     background_down: ""
-                    background_color: 0.3, 0.8, 1, 1
+                    background_color: 0.22, 0.88, 0.70, 1
                     color: 0, 0, 0, 1
                     on_press: root.open_inventory()
 
