@@ -30,6 +30,7 @@ from combat import player_attack, monster_attack
 from loot import generate_loot
 
 BASE_DIR = Path(__file__).resolve().parent
+MONSTER_ART_DIR = BASE_DIR / "assets" / "monsters"
 STAGES = [
     {"name": "Skeleton", "goal": 2},
     {"name": "Zombie", "goal": 3},
@@ -205,6 +206,12 @@ class GameRoot(BoxLayout):
             f"Objective: defeat {remaining}/{goal} {stage_data['name']}"
         )
 
+    def get_monster_art_path(self, monster_name: str) -> str:
+        image_path = MONSTER_ART_DIR / f"{monster_name.lower()}.png"
+        if image_path.exists():
+            return str(image_path)
+        return str(BASE_DIR / "monster.png")
+
     def update_monster_ui(self):
         """Update the label and image for the current monster."""
         if self.monster is None:
@@ -216,6 +223,8 @@ class GameRoot(BoxLayout):
                 self.ids.monster_shadow.opacity = 0.0
         else:
             self.ids.monster_hp_label.text = f"Monster HP: {self.monster.hp}"
+            self.ids.monster_image.source = self.get_monster_art_path(self.monster.name)
+            self.ids.monster_image.reload()
             self.ids.monster_image.opacity = 1.0
             if "monster_shadow" in self.ids:
                 self.ids.monster_shadow.opacity = 1.0
