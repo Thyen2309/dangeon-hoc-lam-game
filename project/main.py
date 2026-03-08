@@ -25,11 +25,17 @@ from kivy.properties import NumericProperty
 
 from camera import Camera
 from player import Player
-from monster import create_random_monster
+from monster import create_monster
 from combat import player_attack, monster_attack
 from loot import generate_loot
 
 BASE_DIR = Path(__file__).resolve().parent
+STAGES = [
+    {"name": "Skeleton", "goal": 2},
+    {"name": "Zombie", "goal": 3},
+    {"name": "Golem", "goal": 2},
+    {"name": "Goblin", "goal": 4},
+]
 
 
 @dataclass(frozen=True)
@@ -91,7 +97,11 @@ class GameRoot(BoxLayout):
         self._inventory_selected_name: str | None = None
         self._inventory_use_button: Button | None = None
         self._inventory_drop_button: Button | None = None
+        self._result_popup: Popup | None = None
         self._camera_unavailable_notified = False
+        self.stage_index = 0
+        self.stage_kills = 0
+        self.game_over = False
 
         # Start updating the camera about 30 times per second.
         Clock.schedule_interval(self.update_camera, 1.0 / 30.0)
@@ -102,6 +112,7 @@ class GameRoot(BoxLayout):
 
         # Update the player HP label at the start.
         Clock.schedule_once(lambda dt: self.update_player_ui(), 0.1)
+        Clock.schedule_once(lambda dt: self.update_stage_ui(), 0.1)
 
         # Bind shadow position after kv ids are ready.
         Clock.schedule_once(lambda dt: self._setup_monster_shadow_binding(), 0)
@@ -180,6 +191,19 @@ class GameRoot(BoxLayout):
     def update_player_ui(self):
         """Update the label that shows the player's HP."""
         self.ids.player_hp_label.text = f"Player HP: {self.player.hp}"
+
+    def get_stage_data(self) -> dict:
+        return STAGES[min(self.stage_index, len(STAGES) - 1)]
+
+    def update_stage_ui(self):
+        stage_data = self.get_stage_data()
+        stage_number = self.stage_index + 1
+        goal = stage_data["goal"]
+        remaining = max(0, goal - self.stage_kills)
+        self.ids.stage_label.text = f"Stage {stage_number}: {stage_data['name']}"
+        self.ids.objective_label.text = (
+            f"Objective: defeat {remaining}/{goal} {stage_data['name']}"
+        )
 
     def update_monster_ui(self):
         """Update the label and image for the current monster."""
@@ -405,6 +429,9 @@ class GameRoot(BoxLayout):
 
     # ---------------- MONSTER / LOOT ----------------
     def schedule_spawn_monster(self):
+        if self.game_over:
+            return
+
         """
         Simulate \"quét camera tìm quái\": sau một khoảng thời gian ngẫu nhiên,
         quái mới xuất hiện tại vị trí sát \"mặt đất\" trong khung camera.
@@ -416,10 +443,14 @@ class GameRoot(BoxLayout):
                 pass
 
         delay = random.uniform(1.0, 4.0)
+        self.update_stage_ui()
         self.show_message("Đang quét xung quanh tìm quái...")
         self._pending_spawn_event = Clock.schedule_once(lambda dt: self.spawn_monster(), delay)
 
     def spawn_monster(self):
+        if self.game_over:
+            return
+
         """
         Create a new random monster and place its image
         at a random position on the camera view.
@@ -427,8 +458,10 @@ class GameRoot(BoxLayout):
         self._pending_spawn_event = None
         self.stop_monster_attack_loop()
 
-        self.monster = create_random_monster()
+        stage_data = self.get_stage_data()
+        self.monster = create_monster(stage_data["name"])
         self.update_monster_ui()
+        self.update_stage_ui()
 
         # Choose a random position for the monster image.
         # Chỉ cho quái xuất hiện ở dải thấp (gần \"mặt đất\" của khung camera).
@@ -706,6 +739,12 @@ class GameRoot(BoxLayout):
         """Remove the current monster (used when running away or after defeat)."""
         self.stop_monster_attack_loop()
         self.stop_monster_idle_animation()
+        if self._pending_spawn_event is not None:
+            try:
+                self._pending_spawn_event.cancel()
+            except Exception:
+                pass
+            self._pending_spawn_event = None
         self.monster = None
         self.update_monster_ui()
 
@@ -750,7 +789,9 @@ class GameRoot(BoxLayout):
 
         if self.player.hp <= 0:
             self.stop_monster_attack_loop()
+            self.game_over = True
             self.show_message("You were defeated! Game over.")
+            self.show_game_over_popup()
         else:
             if self.is_defending:
                 self.show_message(
@@ -896,6 +937,9 @@ class GameRoot(BoxLayout):
         Called when the Attack button is pressed.
         Player attacks first, then the monster responds.
         """
+        if self.game_over:
+            return
+
         if self.monster is None:
             self.show_message("No monster. Press Run to find a new one.")
             return
@@ -906,6 +950,8 @@ class GameRoot(BoxLayout):
         self._play_player_attack_animation()
 
         if self.monster.hp <= 0:
+            self.stage_kills += 1
+            self.update_stage_ui()
             # Monster defeated: chance to drop loot (tap to pick up), then spawn a new monster.
             last_pos_hint = dict(self.ids.monster_image.pos_hint or {"x": 0.3, "y": 0.3})
             dropped = False
@@ -921,7 +967,10 @@ class GameRoot(BoxLayout):
 
             self.clear_monster()
             # Spawn quái mới theo thời gian ngẫu nhiên (1–4 giây).
-            Clock.schedule_once(lambda dt: self.schedule_spawn_monster(), 0.3)
+            if self.stage_kills >= self.get_stage_data()["goal"]:
+                self.advance_stage()
+            else:
+                Clock.schedule_once(lambda dt: self.schedule_spawn_monster(), 0.3)
         else:
             self.show_message(f"You hit the monster for {damage} damage.")
 
@@ -930,6 +979,9 @@ class GameRoot(BoxLayout):
         Called when the Defend button is pressed.
         Player takes reduced damage on the next monster attack.
         """
+        if self.game_over:
+            return
+
         if self.monster is None:
             self.show_message("No monster to defend against.")
             return
@@ -942,6 +994,9 @@ class GameRoot(BoxLayout):
         Called when the Run button is pressed.
         The monster disappears and a new one appears shortly.
         """
+        if self.game_over:
+            return
+
         if self.monster is None:
             self.show_message("You look around... no monster here.")
         else:
@@ -950,6 +1005,89 @@ class GameRoot(BoxLayout):
 
         # Spawn quái mới theo thời gian ngẫu nhiên.
         Clock.schedule_once(lambda dt: self.schedule_spawn_monster(), 0.3)
+
+    def show_game_over_popup(self):
+        if self._result_popup is not None:
+            self._result_popup.dismiss()
+
+        content = BoxLayout(orientation="vertical", spacing=10, padding=12)
+        content.add_widget(
+            Label(
+                text="Ban da chet.\nNhan Choi lai de bat dau tu stage 1.",
+                halign="center",
+                valign="middle",
+            )
+        )
+        replay_button = Button(text="Choi lai", size_hint=(1, None), height=44)
+        replay_button.bind(on_press=lambda *_: self.restart_game())
+        content.add_widget(replay_button)
+
+        self._result_popup = Popup(
+            title="Game Over",
+            content=content,
+            size_hint=(0.72, 0.42),
+            auto_dismiss=False,
+        )
+        self._result_popup.open()
+
+    def show_victory_popup(self):
+        if self._result_popup is not None:
+            self._result_popup.dismiss()
+
+        content = BoxLayout(orientation="vertical", spacing=10, padding=12)
+        content.add_widget(
+            Label(
+                text="Ban da qua het cac man.\nNhan Choi lai de choi tu dau.",
+                halign="center",
+                valign="middle",
+            )
+        )
+        replay_button = Button(text="Choi lai", size_hint=(1, None), height=44)
+        replay_button.bind(on_press=lambda *_: self.restart_game())
+        content.add_widget(replay_button)
+
+        self._result_popup = Popup(
+            title="Chien thang",
+            content=content,
+            size_hint=(0.72, 0.42),
+            auto_dismiss=False,
+        )
+        self._result_popup.open()
+
+    def advance_stage(self):
+        if self.stage_index >= len(STAGES) - 1:
+            self.game_over = True
+            self.show_message("Ban da pha dao tat ca stage.")
+            self.show_victory_popup()
+            return
+
+        self.stage_index += 1
+        self.stage_kills = 0
+        self.update_stage_ui()
+        self.show_message(f"Stage clear! Next enemy: {self.get_stage_data()['name']}.")
+        Clock.schedule_once(lambda dt: self.schedule_spawn_monster(), 0.8)
+
+    def restart_game(self):
+        if self._result_popup is not None:
+            self._result_popup.dismiss()
+            self._result_popup = None
+
+        self.stop_monster_attack_loop()
+        self.stop_monster_idle_animation()
+        self.hide_loot_drop()
+        self.player = Player(name="Hero", hp=100, attack=15, defense=5)
+        self.monster = None
+        self.inventory = {}
+        self.stage_index = 0
+        self.stage_kills = 0
+        self.game_over = False
+        self.is_defending = False
+        self.update_player_ui()
+        self.update_monster_ui()
+        self.update_stage_ui()
+        self.update_inventory_ui()
+        self.show_message("Bat dau lai Stage 1.")
+        Clock.schedule_once(lambda dt: self.schedule_spawn_monster(), 0.5)
 
 
 class DungeonARApp(App):

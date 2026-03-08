@@ -8,6 +8,15 @@ to create a random monster for the game.
 import random
 
 
+MONSTER_TEMPLATES = {
+    "Skeleton": {"hp": (42, 58), "attack": (9, 15)},
+    "Zombie": {"hp": (58, 76), "attack": (10, 16)},
+    "Golem": {"hp": (82, 105), "attack": (13, 20)},
+    "Goblin": {"hp": (46, 62), "attack": (11, 17)},
+    "Slime": {"hp": (30, 50), "attack": (5, 10)},
+}
+
+
 class Monster:
     """
     Represents a monster with HP and attack power.
@@ -38,20 +47,26 @@ def create_random_monster() -> Monster:
     Create a monster with random stats.
     For a simple prototype, we just pick from a small list.
     """
-    monster_templates = [
-        {"name": "Slime", "hp": (30, 50), "attack": (5, 10)},
-        {"name": "Goblin", "hp": (40, 60), "attack": (8, 15)},
-        {"name": "Skeleton", "hp": (35, 55), "attack": (10, 18)},
-    ]
+    name = random.choice(list(MONSTER_TEMPLATES.keys()))
+    return create_monster(name)
 
-    template = random.choice(monster_templates)
+
+def create_monster(name: str, random_position_index: int | None = None) -> Monster:
+    """
+    Create a monster from a named template.
+    """
+    template = MONSTER_TEMPLATES.get(name)
+    if template is None:
+        raise ValueError(f"Unknown monster template: {name}")
+
     hp = random.randint(*template["hp"])
     attack = random.randint(*template["attack"])
     # This index will be used by GameRoot to choose a random position.
-    random_position_index = random.randint(0, 5)
+    if random_position_index is None:
+        random_position_index = random.randint(0, 5)
 
     return Monster(
-        name=template["name"],
+        name=name,
         hp=hp,
         attack=attack,
         random_position_index=random_position_index,
