@@ -52,17 +52,7 @@ Sau khi cai xong, chay mot trong cac cach sau:
 py main.py
 ```
 
-Hoac:
-
-```powershell
-.\run_game.cmd
-```
-
-Neu dang o thu muc goc `E:\dangeon-hoc-lam-game` thi chay:
-
-```powershell
-.\run_game.cmd
-```
+Lenh nay can duoc chay khi ban dang o thu muc `project`.
 
 ## Neu gap loi
 
