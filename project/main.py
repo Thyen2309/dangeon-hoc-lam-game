@@ -15,6 +15,7 @@ from kivy.app import App
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
 from kivy.lang import Builder
+from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
@@ -31,6 +32,8 @@ from loot import generate_loot
 
 BASE_DIR = Path(__file__).resolve().parent
 MONSTER_ART_DIR = BASE_DIR / "assets" / "monsters"
+MONSTER_FRAME_DIR = BASE_DIR / "assets" / "monster_frames"
+LOOT_ICON_DIR = BASE_DIR / "assets" / "loot_icons"
 STAGES = [
     {"name": "Skeleton", "goal": 2},
     {"name": "Zombie", "goal": 3},
@@ -67,6 +70,7 @@ class GameRoot(BoxLayout):
     ground_glow_alpha = NumericProperty(0.0)
     ground_glow_scale = NumericProperty(0.9)
     atmosphere_alpha = NumericProperty(0.18)
+    loot_pulse_scale = NumericProperty(1.0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -91,6 +95,9 @@ class GameRoot(BoxLayout):
         self._loot_anim = None
         self._monster_idle_anim = None
         self._monster_attack_event = None
+        self._monster_sprite_event = None
+        self._monster_frame_paths: list[str] = []
+        self._monster_frame_index = 0
         self._scan_anim = None
         self._inventory_popup: Popup | None = None
         self._inventory_slot_buttons: list[Button] = []
@@ -100,6 +107,7 @@ class GameRoot(BoxLayout):
         self._inventory_drop_button: Button | None = None
         self._result_popup: Popup | None = None
         self._camera_unavailable_notified = False
+        self._bound_input_window = None
         self.stage_index = 0
         self.stage_kills = 0
         self.game_over = False
@@ -117,8 +125,33 @@ class GameRoot(BoxLayout):
 
         # Bind shadow position after kv ids are ready.
         Clock.schedule_once(lambda dt: self._setup_monster_shadow_binding(), 0)
+        Clock.schedule_once(lambda dt: self._setup_input_bindings(), 0)
         Clock.schedule_once(lambda dt: self.update_inventory_ui(), 0)
         Clock.schedule_once(lambda dt: self._start_scan_effect(), 0.1)
+
+    def _setup_input_bindings(self):
+        if self._bound_input_window is Window:
+            return
+        Window.bind(on_key_down=self._on_key_down)
+        Window.bind(on_joy_button_down=self._on_joy_button_down)
+        self._bound_input_window = Window
+
+    def _handle_quick_pickup(self) -> bool:
+        if self._drop_item is None:
+            return False
+        self.on_pickup_loot()
+        return True
+
+    def _on_key_down(self, _window, key, _scancode, _codepoint, _modifiers):
+        if key in (13, 32, 101):
+            return self._handle_quick_pickup()
+        return False
+
+    def _on_joy_button_down(self, _window, _stickid, buttonid):
+        # Common Xbox mapping on Windows: A=0, B=1, X=2, Y=3.
+        if buttonid in (0, 2):
+            return self._handle_quick_pickup()
+        return False
 
     def _setup_monster_shadow_binding(self):
         monster_image = self.ids.get("monster_image")
@@ -212,6 +245,77 @@ class GameRoot(BoxLayout):
             return str(image_path)
         return str(BASE_DIR / "monster.png")
 
+    def get_monster_frame_paths(self, monster_name: str) -> list[str]:
+        frame_dir = MONSTER_FRAME_DIR / monster_name.lower()
+        if not frame_dir.exists():
+            return []
+        return [str(path) for path in sorted(frame_dir.glob("*.png"))]
+
+    def get_loot_icon_path(self, item_name: str) -> str:
+        lookup = {
+            "Gold": "gold.png",
+            "Potion": "potion.png",
+            "Sword": "sword.png",
+            "Armor": "armor.png",
+        }
+        filename = lookup.get(item_name)
+        if filename is None:
+            return ""
+        path = LOOT_ICON_DIR / filename
+        if path.exists():
+            return str(path)
+        return ""
+
+    def _set_monster_frame(self, frame_path: str):
+        image = self.ids.get("monster_image")
+        if image is None:
+            return
+        if image.source != frame_path:
+            image.source = frame_path
+            image.reload()
+
+    def _stop_monster_sprite_animation(self):
+        if self._monster_sprite_event is not None:
+            try:
+                self._monster_sprite_event.cancel()
+            except Exception:
+                pass
+            self._monster_sprite_event = None
+
+    def _advance_monster_frame(self, *_args):
+        if not self._monster_frame_paths:
+            return False
+        self._monster_frame_index = (self._monster_frame_index + 1) % len(self._monster_frame_paths)
+        self._set_monster_frame(self._monster_frame_paths[self._monster_frame_index])
+        return True
+
+    def _start_monster_sprite_animation(self, mode: str = "idle"):
+        if self.monster is None:
+            return
+
+        frame_paths = self.get_monster_frame_paths(self.monster.name)
+        if not frame_paths:
+            self._monster_frame_paths = []
+            self._stop_monster_sprite_animation()
+            self._set_monster_frame(self.get_monster_art_path(self.monster.name))
+            return
+
+        if mode == "attack" and len(frame_paths) > 1:
+            active_paths = frame_paths
+            interval = 0.09
+        else:
+            active_paths = frame_paths[: max(2, min(3, len(frame_paths)))]
+            interval = 0.18
+
+        self._stop_monster_sprite_animation()
+        self._monster_frame_paths = active_paths
+        self._monster_frame_index = 0
+        self._set_monster_frame(active_paths[0])
+        if len(active_paths) > 1:
+            self._monster_sprite_event = Clock.schedule_interval(
+                self._advance_monster_frame, interval
+            )
+
     def update_monster_ui(self):
         """Update the label and image for the current monster."""
         if self.monster is None:
@@ -219,12 +323,12 @@ class GameRoot(BoxLayout):
             self.ids.monster_image.opacity = 0.0
             self.aura_alpha = 0.0
             self.ground_glow_alpha = 0.0
+            self._stop_monster_sprite_animation()
             if "monster_shadow" in self.ids:
                 self.ids.monster_shadow.opacity = 0.0
         else:
             self.ids.monster_hp_label.text = f"Monster HP: {self.monster.hp}"
-            self.ids.monster_image.source = self.get_monster_art_path(self.monster.name)
-            self.ids.monster_image.reload()
+            self._start_monster_sprite_animation("idle")
             self.ids.monster_image.opacity = 1.0
             if "monster_shadow" in self.ids:
                 self.ids.monster_shadow.opacity = 1.0
@@ -498,6 +602,7 @@ class GameRoot(BoxLayout):
     def show_loot_drop(self, item: tuple[str, int], near_pos_hint: dict):
         name, qty = item
         loot_button = self.ids.get("loot_button")
+        loot_icon = self.ids.get("loot_icon")
         if loot_button is None:
             return
 
@@ -511,13 +616,20 @@ class GameRoot(BoxLayout):
         self._drop_item = item
         loot_button.disabled = False
         loot_button.opacity = 1.0
+        self.loot_pulse_scale = 1.0
 
-        # Place the button near where the monster was.
+        # Keep the prompt in a consistent center-bottom area so touch/gamepad pickup
+        # is easier than tapping a small moving target near the monster.
         x = float(near_pos_hint.get("x", 0.3))
         y = float(near_pos_hint.get("y", 0.3))
-        loot_button.pos_hint = {"x": max(0.02, min(0.78, x + 0.06)), "y": max(0.02, min(0.78, y - 0.02))}
-
-        loot_button.text = f"NHẶT: {name} x{qty}"
+        center_x = max(0.28, min(0.72, x + 0.16))
+        base_y = 0.05 if y < 0.2 else 0.09
+        if loot_icon is not None:
+            loot_icon.source = self.get_loot_icon_path(name)
+            loot_icon.pos_hint = {"center_x": center_x, "y": base_y}
+            loot_icon.opacity = 1.0
+        loot_button.pos_hint = {"center_x": center_x, "y": base_y}
+        loot_button.text = ""
         self._cancel_loot_animation()
         self.start_loot_bounce_animation()
 
@@ -532,9 +644,14 @@ class GameRoot(BoxLayout):
     def hide_loot_drop(self):
         self._cancel_loot_animation()
         loot_button = self.ids.get("loot_button")
+        loot_icon = self.ids.get("loot_icon")
         if loot_button is not None:
             loot_button.opacity = 0.0
             loot_button.disabled = True
+        if loot_icon is not None:
+            loot_icon.opacity = 0.0
+            loot_icon.source = ""
+        self.loot_pulse_scale = 1.0
         self._drop_item = None
 
     def on_pickup_loot(self):
@@ -662,6 +779,7 @@ class GameRoot(BoxLayout):
         spawn_fx.start(self)
 
     def stop_monster_idle_animation(self):
+        self._stop_monster_sprite_animation()
         img = self.ids.get("monster_image")
         if img is not None:
             Animation.cancel_all(img)
@@ -684,6 +802,7 @@ class GameRoot(BoxLayout):
             return
 
         self.stop_monster_idle_animation()
+        self._start_monster_sprite_animation("idle")
 
         base_x, base_y = img.pos
         base_w, base_h = img.size
@@ -732,17 +851,14 @@ class GameRoot(BoxLayout):
         if btn is None:
             return
 
-        base_y = btn.y
-        base_w, base_h = btn.size
-        if base_w <= 0 or base_h <= 0:
-            base_w, base_h = 110, 44
-
-        up = Animation(y=base_y + 10, size=(base_w * 1.04, base_h * 1.04), duration=0.4)
-        down = Animation(y=base_y, size=(base_w, base_h), duration=0.4)
-        anim = up + down
+        Animation.cancel_all(self, "loot_pulse_scale")
+        anim = (
+            Animation(loot_pulse_scale=1.08, duration=0.28, t="out_quad")
+            + Animation(loot_pulse_scale=1.0, duration=0.28, t="in_out_quad")
+        )
         anim.repeat = True
         self._loot_anim = anim
-        anim.start(btn)
+        anim.start(self)
 
     def clear_monster(self):
         """Remove the current monster (used when running away or after defeat)."""
@@ -825,6 +941,7 @@ class GameRoot(BoxLayout):
             return
 
         self.stop_monster_idle_animation()
+        self._start_monster_sprite_animation("attack")
 
         base_x, base_y = img.pos
         base_size = tuple(img.size)
@@ -899,6 +1016,7 @@ class GameRoot(BoxLayout):
             return
 
         self.stop_monster_idle_animation()
+        self._start_monster_sprite_animation("attack")
 
         base_x, base_y = img.pos
         base_size = tuple(img.size)

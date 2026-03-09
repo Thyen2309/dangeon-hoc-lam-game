@@ -94,23 +94,34 @@
 
         Image:
             id: monster_image
-            source: "monster.png"   # Put a monster.png in the same folder.
+            source: "monster.png"
             size_hint: None, None
             size: 200, 200
-            opacity: 0.0            # Hidden until a monster appears.
+            opacity: 0.0
 
-        # Loot drop (tap to pick up).
+        Image:
+            id: loot_icon
+            source: ""
+            size_hint: None, None
+            size: 176 * root.loot_pulse_scale, 132 * root.loot_pulse_scale
+            pos_hint: {"center_x": 0.5, "y": 0.08}
+            opacity: 0.0
+            allow_stretch: True
+            keep_ratio: True
+
+        # Invisible touch/controller target placed exactly over the item art.
         Button:
             id: loot_button
-            text: "NHẶT"
+            text: ""
             size_hint: None, None
-            size: 110, 44
+            size: 176 * root.loot_pulse_scale, 132 * root.loot_pulse_scale
+            pos_hint: {"center_x": 0.5, "y": 0.08}
             opacity: 0.0
             disabled: True
             background_normal: ""
             background_down: ""
-            background_color: 0.95, 0.75, 0.10, 0.95
-            color: 0, 0, 0, 1
+            background_color: 0, 0, 0, 0
+            border: 0, 0, 0, 0
             on_press: root.on_pickup_loot()
 
         # Full-screen red flash overlay when monster attacks.
@@ -137,35 +148,31 @@
             padding: 8
             BoxLayout:
                 size_hint: None, None
-                size: 360, 64
+                size: 118, 64
                 orientation: "horizontal"
                 spacing: 6
-                canvas.before:
-                    Color:
-                        rgba: 0.02, 0.04, 0.06, 0.64
-                    RoundedRectangle:
-                        pos: self.pos
-                        size: self.size
-                        radius: [10]
 
                 Button:
-                    text: "Rương"
+                    text: ""
                     size_hint_x: None
-                    width: 90
-                    font_size: "14sp"
-                    background_normal: ""
-                    background_down: ""
-                    background_color: 0.22, 0.88, 0.70, 1
-                    color: 0, 0, 0, 1
+                    width: 118
+                    background_normal: "assets/ui/chest_button.png"
+                    background_down: "assets/ui/chest_button.png"
+                    background_disabled_normal: "assets/ui/chest_button.png"
+                    background_disabled_down: "assets/ui/chest_button.png"
+                    border: 0, 0, 0, 0
                     on_press: root.open_inventory()
 
                 Label:
                     id: inventory_label
-                    text: "Rương: (trống)"
+                    text: ""
                     font_size: "13sp"
                     halign: "left"
                     valign: "middle"
                     text_size: self.size
+                    opacity: 0.0
+                    width: 0
+                    size_hint_x: None
 
     # Middle area: HP information and status messages.
     BoxLayout:
@@ -245,4 +252,3 @@
             text: "Run"
             font_size: "18sp"
             on_press: root.on_run()
-
