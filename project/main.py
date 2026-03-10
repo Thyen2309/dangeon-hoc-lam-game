@@ -14,6 +14,7 @@ import random
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
+from kivy.core.image import Image as CoreImage
 from kivy.lang import Builder
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
@@ -34,12 +35,34 @@ BASE_DIR = Path(__file__).resolve().parent
 MONSTER_ART_DIR = BASE_DIR / "assets" / "monsters"
 MONSTER_FRAME_DIR = BASE_DIR / "assets" / "monster_frames"
 LOOT_ICON_DIR = BASE_DIR / "assets" / "loot_icons"
+RESOURCE_DIR = BASE_DIR.parent / "tainguyen"
 STAGES = [
     {"name": "Skeleton", "goal": 2},
     {"name": "Zombie", "goal": 3},
     {"name": "Golem", "goal": 2},
     {"name": "Goblin", "goal": 4},
 ]
+
+MONSTER_SPRITE_SHEETS = {
+    "Skeleton": {
+        "path": RESOURCE_DIR / "skeleton.png",
+        "frame_size": (32, 32),
+        "idle_frames": [0, 1],
+        "attack_frames": [2, 3, 4, 5],
+    },
+    "Zombie": {
+        "path": RESOURCE_DIR / "zombie.png",
+        "frame_size": (32, 32),
+        "idle_frames": [0, 1],
+        "attack_frames": [0, 1, 2],
+    },
+    "Golem": {
+        "path": RESOURCE_DIR / "golem.png",
+        "frame_size": (64, 64),
+        "idle_frames": [0, 1],
+        "attack_frames": [0, 1, 2, 3],
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -48,6 +71,13 @@ class DepthStyle:
     monster_opacity: float
     shadow_opacity: float
     shadow_offset_px: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class MonsterFrame:
+    key: str
+    texture: Texture | None = None
+    source: str | None = None
 
 
 class GameRoot(BoxLayout):
@@ -96,8 +126,9 @@ class GameRoot(BoxLayout):
         self._monster_idle_anim = None
         self._monster_attack_event = None
         self._monster_sprite_event = None
-        self._monster_frame_paths: list[str] = []
+        self._monster_frames: list[MonsterFrame] = []
         self._monster_frame_index = 0
+        self._sprite_sheet_cache: dict[str, list[MonsterFrame]] = {}
         self._scan_anim = None
         self._inventory_popup: Popup | None = None
         self._inventory_slot_buttons: list[Button] = []
@@ -251,6 +282,75 @@ class GameRoot(BoxLayout):
             return []
         return [str(path) for path in sorted(frame_dir.glob("*.png"))]
 
+    def get_sheet_frames(self, monster_name: str) -> list[MonsterFrame]:
+        if monster_name in self._sprite_sheet_cache:
+            return self._sprite_sheet_cache[monster_name]
+
+        config = MONSTER_SPRITE_SHEETS.get(monster_name)
+        if config is None:
+            return []
+
+        sprite_path = config["path"]
+        if not sprite_path.exists():
+            return []
+
+        try:
+            texture = CoreImage(str(sprite_path)).texture
+        except Exception:
+            return []
+
+        frame_width, frame_height = config["frame_size"]
+        if frame_width <= 0 or frame_height <= 0:
+            return []
+
+        columns = int(texture.width // frame_width)
+        rows = int(texture.height // frame_height)
+        if columns <= 0 or rows <= 0:
+            return []
+
+        frames: list[MonsterFrame] = []
+        frame_index = 0
+        for row in range(rows):
+            top_y = row * frame_height
+            texture_y = int(texture.height - top_y - frame_height)
+            for col in range(columns):
+                texture_x = col * frame_width
+                frame_texture = texture.get_region(
+                    texture_x,
+                    texture_y,
+                    frame_width,
+                    frame_height,
+                )
+                frames.append(
+                    MonsterFrame(
+                        key=f"{sprite_path.as_posix()}#{frame_index}",
+                        texture=frame_texture,
+                    )
+                )
+                frame_index += 1
+
+        self._sprite_sheet_cache[monster_name] = frames
+        return frames
+
+    def get_monster_frames(self, monster_name: str, mode: str = "idle") -> list[MonsterFrame]:
+        sheet_frames = self.get_sheet_frames(monster_name)
+        if sheet_frames:
+            config = MONSTER_SPRITE_SHEETS.get(monster_name, {})
+            configured_indices = config.get("attack_frames" if mode == "attack" else "idle_frames", [])
+            selected = [
+                sheet_frames[index]
+                for index in configured_indices
+                if 0 <= index < len(sheet_frames)
+            ]
+            if selected:
+                return selected
+            return sheet_frames
+
+        return [
+            MonsterFrame(key=path, source=path)
+            for path in self.get_monster_frame_paths(monster_name)
+        ]
+
     def get_loot_icon_path(self, item_name: str) -> str:
         lookup = {
             "Gold": "gold.png",
@@ -266,12 +366,21 @@ class GameRoot(BoxLayout):
             return str(path)
         return ""
 
-    def _set_monster_frame(self, frame_path: str):
+    def _set_monster_frame(self, frame: MonsterFrame | str):
         image = self.ids.get("monster_image")
         if image is None:
             return
-        if image.source != frame_path:
-            image.source = frame_path
+        if isinstance(frame, str):
+            frame = MonsterFrame(key=frame, source=frame)
+
+        if frame.texture is not None:
+            image.source = ""
+            image.texture = frame.texture
+            image.canvas.ask_update()
+            return
+
+        if frame.source and image.source != frame.source:
+            image.source = frame.source
             image.reload()
 
     def _stop_monster_sprite_animation(self):
@@ -283,35 +392,29 @@ class GameRoot(BoxLayout):
             self._monster_sprite_event = None
 
     def _advance_monster_frame(self, *_args):
-        if not self._monster_frame_paths:
+        if not self._monster_frames:
             return False
-        self._monster_frame_index = (self._monster_frame_index + 1) % len(self._monster_frame_paths)
-        self._set_monster_frame(self._monster_frame_paths[self._monster_frame_index])
+        self._monster_frame_index = (self._monster_frame_index + 1) % len(self._monster_frames)
+        self._set_monster_frame(self._monster_frames[self._monster_frame_index])
         return True
 
     def _start_monster_sprite_animation(self, mode: str = "idle"):
         if self.monster is None:
             return
 
-        frame_paths = self.get_monster_frame_paths(self.monster.name)
-        if not frame_paths:
-            self._monster_frame_paths = []
+        frames = self.get_monster_frames(self.monster.name, mode)
+        if not frames:
+            self._monster_frames = []
             self._stop_monster_sprite_animation()
             self._set_monster_frame(self.get_monster_art_path(self.monster.name))
             return
 
-        if mode == "attack" and len(frame_paths) > 1:
-            active_paths = frame_paths
-            interval = 0.09
-        else:
-            active_paths = frame_paths[: max(2, min(3, len(frame_paths)))]
-            interval = 0.18
-
         self._stop_monster_sprite_animation()
-        self._monster_frame_paths = active_paths
+        self._monster_frames = frames
         self._monster_frame_index = 0
-        self._set_monster_frame(active_paths[0])
-        if len(active_paths) > 1:
+        self._set_monster_frame(frames[0])
+        interval = 0.09 if mode == "attack" and len(frames) > 1 else 0.18
+        if len(frames) > 1:
             self._monster_sprite_event = Clock.schedule_interval(
                 self._advance_monster_frame, interval
             )
