@@ -17,7 +17,7 @@ def generate_loot() -> tuple[str, int]:
     - Equipment is rarer and drops as a single item
     """
     items = ["Gold", "Potion", "Armor", "Sword"]
-    weights = [55, 25, 12, 8]
+    weights = [50, 25, 15, 10]
     item = random.choices(items, weights=weights, k=1)[0]
 
     if item == "Gold":
